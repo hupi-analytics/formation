@@ -59,67 +59,65 @@ object kmeans {
     val numClusters = args(2).toString.split(",") // list of k
     val n =  numClusters.length
 
+    val sparkSession = SparkSession.builder()
+         //.config("es.read.field.exclude", "netflow.tcp_flags_label")   
+        //.master("local")
+        .appName("kmeans")
+        .getOrCreate()
+
+    val sc = sparkSession.sparkContext
+
+    // implicit variable (important variables to run the functions in the geotrellis library)
+    implicit val sparkContext = sc
+
+    val rr = implicitly[RasterReader[HadoopGeoTiffRDD.Options, (ProjectedExtent, Tile)]]
+
+    // Delete outputs if it's existed in HDFS 
+
+    val conf = sc.hadoopConfiguration  
+    val fs = org.apache.hadoop.fs.FileSystem.get(new java.net.URI(HdfsUrl), conf) 
+    
+    // Load GeoTiff that we need from HDFS 
+    // We get multi bands from HDFS (except band 8) 
+    val sourceTiles = sc.hadoopMultibandGeoTiffRDD(HdfsUrl + dataRepo + landsatName + ".tif").repartition(numPartitions)
+
+    // Prepare input for KMeans 
+    // We convert multi tiles into one vector of features in RDD
+    val rddArrayOfTiles = sourceTiles.map (l => (l._2.band(0).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
+                       l._2.band(1).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
+                       l._2.band(2).convert(DoubleConstantNoDataCellType).toArrayDouble(),
+                       l._2.band(3).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
+                       l._2.band(4).convert(DoubleConstantNoDataCellType).toArrayDouble(),
+                       l._2.band(5).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
+                       l._2.band(6).convert(DoubleConstantNoDataCellType).toArrayDouble(),
+                       l._2.band(7).convert(DoubleConstantNoDataCellType).toArrayDouble(),
+                       l._2.band(8).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
+                       l._2.band(9).convert(DoubleConstantNoDataCellType).toArrayDouble()))
+      .map(l => l._1.zip(l._2).zip(l._3).zip(l._4).zip(l._5).zip(l._6).zip(l._7).zip(l._8).zip(l._9).zip(l._10))
+      .map(l => l.map(k => Vectors.dense(k._1._1._1._1._1._1._1._1._1, k._1._1._1._1._1._1._1._1._2, 
+                                         k._1._1._1._1._1._1._1._2, k._1._1._1._1._1._1._2,
+                                        k._1._1._1._1._1._2, k._1._1._1._1._2, k._1._1._1._2,
+                                         k._1._1._2, k._1._2, k._2)))
+
+    val input = rddArrayOfTiles.flatMap(l => l)
+
     for (i <- 0 to (n - 1)) {
       val k = numClusters(i).toInt
-      val sparkSession = SparkSession.builder()
-           //.config("es.read.field.exclude", "netflow.tcp_flags_label")   
-          //.master("local")
-          .appName("kmeans")
-          .getOrCreate()
 
-      val sc = sparkSession.sparkContext
-
-      // implicit variable (important variables to run the functions in the geotrellis library)
-      implicit val sparkContext = sc
-
-      val rr = implicitly[RasterReader[HadoopGeoTiffRDD.Options, (ProjectedExtent, Tile)]]
-
-      //val saveAddress = HdfsUrl + saveRepo + landsatName + "/" + k 
       val saveAddress = HdfsUrl + saveRepo + landsatName + "/" + k 
       val savePath = new Path(saveAddress)
 
-      // Delete outputs if it's existed in HDFS 
-
-      val conf = sc.hadoopConfiguration  
-      val fs = org.apache.hadoop.fs.FileSystem.get(new java.net.URI(HdfsUrl), conf) 
       // delete the model if it existed already
       fs.delete(savePath,true)
       
-      // Load GeoTiff that we need from HDFS 
-      // We get multi bands from HDFS (except band 8) 
-      val sourceTiles = sc.hadoopMultibandGeoTiffRDD(HdfsUrl + dataRepo + landsatName + ".tif").repartition(numPartitions)
-
-      // Prepare input for KMeans 
-      // We convert multi tiles into one vector of features in RDD
-      val rddArrayOfTiles = sourceTiles.map (l => (l._2.band(0).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
-                         l._2.band(1).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
-                         l._2.band(2).convert(DoubleConstantNoDataCellType).toArrayDouble(),
-                         l._2.band(3).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
-                         l._2.band(4).convert(DoubleConstantNoDataCellType).toArrayDouble(),
-                         l._2.band(5).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
-                         l._2.band(6).convert(DoubleConstantNoDataCellType).toArrayDouble(),
-                         l._2.band(7).convert(DoubleConstantNoDataCellType).toArrayDouble(),
-                         l._2.band(8).convert(DoubleConstantNoDataCellType).toArrayDouble(), 
-                         l._2.band(9).convert(DoubleConstantNoDataCellType).toArrayDouble()))
-        .map(l => l._1.zip(l._2).zip(l._3).zip(l._4).zip(l._5).zip(l._6).zip(l._7).zip(l._8).zip(l._9).zip(l._10))
-        .map(l => l.map(k => Vectors.dense(k._1._1._1._1._1._1._1._1._1, k._1._1._1._1._1._1._1._1._2, 
-                                           k._1._1._1._1._1._1._1._2, k._1._1._1._1._1._1._2,
-                                          k._1._1._1._1._1._2, k._1._1._1._1._2, k._1._1._1._2,
-                                           k._1._1._2, k._1._2, k._2)))
-
-      val input = rddArrayOfTiles.flatMap(l => l)
-
-      // Build a KMeans model
-
       // We train KMeans model
       val clusters = KMeans.train(input, k, 20)
-
       // save model to HDFS 
       clusters.save(sc, saveAddress)
 
-      // stop SparkContext 
-      sc.stop()
+      println(s"We finished with k = $k")
     }
+
   }
 
 }
