@@ -1,0 +1,43 @@
+name: exemple_Docker
+channels:
+  - r
+  - conda-forge
+  - defaults
+dependencies:
+  - _r-mutex=1.0.0
+  - mysql-connector-c=6.1.11
+  - r-askpass=1.0
+  - r-assertthat=0.2.1
+  - r-base=3.6.1
+  - r-bh=1.69.0_1
+  - r-cli=1.1.0
+  - r-cluster=2.0.8
+  - r-crayon=1.3.4
+  - r-dbi=1.1.0
+  - r-dplyr=0.8.0.1
+  - r-fansi=0.4.0
+  - r-glue=1.3.1
+  - r-jsonlite=1.6
+  - r-lubridate=1.7.4
+  - r-magrittr=1.5
+  - r-mime=0.6
+  - r-mongolite=2.0.1
+  - r-openssl=1.3
+  - r-pillar=1.3.1
+  - r-pkgconfig=2.0.2
+  - r-plogr=0.2.0
+  - r-plyr=1.8.4
+  - r-purrr=0.3.2
+  - r-r6=2.4.0
+  - r-rcpp=1.0.1
+  - r-reshape2=1.4.3
+  - r-rlang=0.3.4
+  - r-rmysql=0.10.19
+  - r-stringi=1.4.3
+  - r-stringr=1.4.0
+  - r-sys=3.2
+  - r-tibble=2.1.1
+  - r-tidyselect=0.2.5
+  - r-utf8=1.1.4
+prefix: C:\Users\NGUYEN Minh Tu\Anaconda3\envs\exemple_Docker
+
