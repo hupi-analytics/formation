@@ -1,9 +1,9 @@
-# WIK 222 Modele cluster véhicules
+# Exemple de création Docker
 ## Objectif du repo 
-L'objectif de ce repo est de créer une collection Mongo avec les champs suivant [véhicule_id, cluster]. Nous ne voulons pas prendre toutes les options des véhicules pour nos modèles, nous allons donc faire un clustering de ces options et nous allons seulement ajouter la varible cluster aux modèles.
+L'objectif de ce repo est de créer un Docker à partir d'un script R qui prend les données de la base iris.txt dans HDFS, fait un modèle KMeans et écrit les résultats finaux dans MongoDB.
 ## Structure
 ```
-WIK-222 Modele cluster véhicules
+exemple_creation_Docker
 |
 |___src
 |    |
@@ -26,21 +26,18 @@ WIK-222 Modele cluster véhicules
 ```
 
 ## Utilisation des constantes
-Dans ce repo, il y a 3 constantes que nous pouvons modifier (sans compter les variables d'environnement).
- Il y en a une qui correspondent à la collection mongo de sortie, les deux restantes nous permettent de calibrer les nombres de cluster que nous voulons faire au minimum et au maximum.
+Dans ce repo, il y a 1 constante que nous pouvons modifier (sans compter les variables d'environnement) qui correspond à la collection mongo de sortie.
 ``` 
     - collection_sortie = Collection où nous allons écrire la matrice de test à la fin du script.
-    - cluster_min = Nombre minimum de cluster à tester (par défaut vaut 3).
-    - cluster_max = Nombre maximum de cluster à tester (par défaut vaut 15).
 ```
-Plus "cluster_max" sera grand et éloigné de cluster_min, plus le temps d'exécution du script sera grand.
+
 
 ## Environnement
 ### Environnement conda
 Le docker nécessite d'être lancé dans un environnement conda activé. Cet environnement est défini par le fichier `environment.yml`.
 L'environnement conda et toutes les dépendances sont automatiquement chargées au démarrage du container. 
 ### Variables d'environnement
-Cette application nécessite plusieurs variables d'environnement définies dans le fichier `env.file` afin d'avoir accès aux bases MongoDb et aux bases MySQL de Wikicampers.
+Cette application nécessite plusieurs variables d'environnement définies dans le fichier `env.file` afin d'avoir accès aux bases MongoDb et chemin d'accès au input dans HDFS.
 ## Dockerfile
 Voici le  fichier `Dockerfile`, il est générique et peut être reproduit pour d'autres projets :
 

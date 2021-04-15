@@ -1,3 +1,3 @@
 #!/bin/bash
 
-docker -H localhost run --rm --name exemple_creation_Docker --net host --env-file /home/ecoles-projets/bureau_etudes_insa/2021/exemple_creation_Docker/env.file -v "/home/ecoles-projets/bureau_etudes_insa/2021/exemple_creation_Docker:/usr/local/workdir" exemple_creation_Docker /bin/bash start.sh Rscript ./src/main.r
+docker -H localhost run --rm --name exemple_creation_Docker --net host --env-file /home/ecoles-projets/bureau_etudes_insa/2021/exemple_creation_Docker/env.file -v "/home/ecoles-projets/bureau_etudes_insa/2021/exemple_creation_Docker:/usr/local/workdir" docker.hupi.io/docker-ecoles/hupi/ecoles-projets/exemple_image /bin/bash start.sh Rscript ./src/main.r
