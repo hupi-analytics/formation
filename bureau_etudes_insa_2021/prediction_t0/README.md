@@ -1,15 +1,15 @@
-# Exemple de création Docker
+# Création d'un modèle de prédiction sur Docker
 ## Objectif du repo 
-L'objectif de ce repo est de créer un Docker à partir d'un script R qui prend les données de la base iris.txt dans HDFS, fait un modèle KMeans et écrit les résultats finaux dans MongoDB.
+L'objectif de ce repo est d'entraîner un modèle de prédiction à partir d'un script R qui prend les données depuis `HDFS`, les prétraite, entraîne un modèle `RandomForest` et écrit les résultats finaux dans `MongoDB`.
 ## Structure
 ```
-exemple_creation_Docker
+prediction_t0
 |
 |___src
 |    |
-|    |__constante.r             # Script contenant les constantes du modèle
+|    |__constante.r             # Script contenant les constantes I/O du modèle
 |    |
-|    |__function.r              # Script contenant les fonctions qui sont utilisées par le script principal
+|    |__function.r              # Script contenant la fonction de prétraitement
 |    |
 |    |__main.r                  # Script principal
 |
@@ -25,16 +25,17 @@ exemple_creation_Docker
        
 ```
 
-## Utilisation des constantes
-Dans ce repo, il y a 1 constante que nous pouvons modifier (sans compter les variables d'environnement) qui correspond à la collection mongo de sortie.
-``` 
-    - collection_sortie = Collection où nous allons écrire la matrice de test à la fin du script.
-```
-
-
 ## Environnement
 ### Environnement conda
-Le docker nécessite d'être lancé dans un environnement conda activé. Cet environnement est défini par le fichier `environment.yml`.
+L'environnement doit contenir les packages R :
+```
+- lubridate
+- dplyr
+- stringr
+- randomForest
+- mongolite
+```
+Le docker nécessite d'être lancé dans un environnement conda activé. Cet environnement est défini par le fichier `environment.yml` et s'appelle `prediction_t0`
 L'environnement conda et toutes les dépendances sont automatiquement chargées au démarrage du container. 
 ### Variables d'environnement
 Cette application nécessite plusieurs variables d'environnement définies dans le fichier `env.file` afin d'avoir accès aux bases MongoDb et chemin d'accès au input dans HDFS.
@@ -61,24 +62,19 @@ RUN mkdir /usr/local/workdir
 WORKDIR /usr/local/workdir
 ```
 
-**Note** : Cette méthode fonctionne également avec des application fonctionnant avec le langage `Python`.
 ## Lancement de l'application
 ### Build de l'image
 On se met à la racine du repo et on lance la commande suivante
 ```bash
 $ docker build -t <nom_image> .
 ```
-### Lancement du programme
-Toujours à la racine du repo, on lance le programme via la commande
-```bash
-$ docker run --rm --name <nom_container> -v "/chemin/vers/le/repo/wik_222_modele_cluster_options_veh:/usr/local/workdir" --env-file /chemin/vers/le/repo/wik_222_modele_cluster_options_veh/env.file <nom_image> /bin/bash start.sh rscript ./src/main.r
-```
+**Note :** avec par exemple <nom_image> = prediction_t0
 
-### Commande Docker 
+### Lancement du programme
 Voici la commande Docker à exécuter afin que le script se lance :
-En local sur mon ordinateur :
+En local :
 ```
- docker run --rm --name test_wiki -v "C:\Users\gauth\Desktop\Wikicampers\wik_222_modele_cluster_options_veh:/usr/local/workdir" --env-file ./env.file registry.hupi.io/hupi/wik_222_cluster_vehicules:0.8 /bin/bash start.sh Rscript ./src/main.r
+ docker run --rm --name <nom_image> --net host --env-file ./env.file -v "C:/Users/.../prediction_t0:/usr/local/workdir" <nom_image> /bin/bash ./start.sh Rscript ./src/main.r
 ```
  Sur le serveur :
 ```
