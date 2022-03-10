@@ -1,1 +1,0 @@
-curl -XPOST http://api.dataretriever.hupi.io/private/<client>/search -d '{"client":"<client>","filters":{"label": "question"}, "render_type":"cursor"}' -H "X-API-TOKEN: <token>" -H "content-type: application/json" -H "accept-version: v1"
