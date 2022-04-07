@@ -1,0 +1,15 @@
+{
+  "query": {
+    "bool": {
+      "should": [
+        {
+          "multi_match": {
+            "query": "facebook youtube",
+            "type": "most_fields",
+            "fields": ["*_label"]
+          }
+        }
+      ]
+    }
+  }
+}

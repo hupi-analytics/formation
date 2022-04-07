@@ -1,0 +1,7 @@
+[Mon Nov 23 09:29:45.216141 2015] [mpm_prefork:notice] [pid 1879] AH00163: Apache/2.4.7 (Ubuntu) PHP/5.5.9-1ubuntu4.14 configured -- resuming normal operations
+[Mon Nov 23 09:29:45.216164 2015] [core:notice] [pid 1879] AH00094: Command line: '/usr/sbin/apache2'
+[Fri Nov 27 18:13:57.151472 2015] [mpm_prefork:notice] [pid 1879] AH00169: caught SIGTERM, shutting down
+[Mon Nov 30 09:09:17.993766 2015] [mpm_prefork:notice] [pid 1833] AH00163: Apache/2.4.7 (Ubuntu) PHP/5.5.9-1ubuntu4.14 configured -- resuming normal operations
+[Mon Nov 30 09:09:17.993956 2015] [core:notice] [pid 1833] AH00094: Command line: '/usr/sbin/apache2'
+[Mon Nov 30 09:43:31.357446 2015] [mpm_prefork:notice] [pid 1833] AH00171: Graceful restart requested, doing restart
+AH00558: apache2: Could not reliably determine the server's fully qualified domain name, using 127.0.1.1. Set the 'ServerName' directive globally to suppress this message

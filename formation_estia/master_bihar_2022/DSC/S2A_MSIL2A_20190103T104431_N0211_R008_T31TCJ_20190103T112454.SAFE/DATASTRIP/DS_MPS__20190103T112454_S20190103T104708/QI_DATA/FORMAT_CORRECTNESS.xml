@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Earth_Explorer_File xmlns="http://gs2.esa.int/DATA_STRUCTURE/olqcReport">
+    <Earth_Explorer_Header>
+        <Fixed_Header>
+            <File_Name>FORMAT_CORRECTNESS.xml</File_Name>
+            <File_Description>Report produced by OLQC-SC</File_Description>
+            <Notes></Notes>
+            <Mission>S2A</Mission>
+            <File_Class>OPER</File_Class>
+            <File_Type>REP_OLQCPA</File_Type>
+            <Validity_Period>
+                <Validity_Start>UTC=2015-06-22T00:00:00</Validity_Start>
+                <Validity_Stop>UTC=2100-01-01T00:00:00</Validity_Stop>
+            </Validity_Period>
+            <File_Version>2</File_Version>
+            <Source>
+                <System>OLQC-SC</System>
+                <Creator>OLQC-SC</Creator>
+                <Creator_Version>01.06.03</Creator_Version>
+                <Creation_Date>UTC=2019-01-03T12:45:31</Creation_Date>
+            </Source>
+        </Fixed_Header>
+    </Earth_Explorer_Header>
+    <Data_Block type="xml">
+        <report gippVersion="1.0" globalStatus="PASSED" date="2019-01-03T12:45:31.083Z">
+            <checkList>
+                <parentID>S2A_OPER_GIP_OLQCPA_MPC__20180528T000018_V20150622T000000</parentID>
+                <name>FORMAT_CORRECTNESS</name>
+                <version>1.0</version>
+                <item url="/dpc/data/phoebus-share/PHOEBUS-3.4.1/wp_in_progress/l2a_20190103_1/app_data/steps_data/DS/S2A_OPER_MSI_L2A_DS_MPS__20190103T112454_S20190103T104708_N02.11/" className="PDI Level 2A Datastrip Folder" name="S2A_OPER_MSI_L2A_DS_MPS__20190103T112454_S20190103T104708_N02.11" class="http://www.esa.int/s2#pdi_level_2a_datastrip_container"/>
+                <check>
+                    <inspection creation="2019-01-03T12:45:29.935Z" duration="1140" execution="2019-01-03T12:45:29.940Z" id="schemaXmlValidator" item="MTD_DS.xml" itemURL="/dpc/data/phoebus-share/PHOEBUS-3.4.1/wp_in_progress/l2a_20190103_1/app_data/steps_data/DS/S2A_OPER_MSI_L2A_DS_MPS__20190103T112454_S20190103T104708_N02.11/MTD_DS.xml" name="Schema Validator. " priority="5" processingStatus="done" status="PASSED"/>
+                    <message contentType="text/plain">The schema validation passed successfully.</message>
+                </check>
+                <check>
+                    <inspection creation="2019-01-03T12:45:31.564Z" duration="2" execution="2019-01-03T12:45:31.574Z" id="Start_Stop_Time" item="MTD_DS.xml" itemURL="/dpc/data/phoebus-share/PHOEBUS-3.4.1/wp_in_progress/l2a_20190103_1/app_data/steps_data/DS/S2A_OPER_MSI_L2A_DS_MPS__20190103T112454_S20190103T104708_N02.11/MTD_DS.xml" name="Check start/stop time validity. " priority="5" processingStatus="done" status="PASSED"/>
+                    <message contentType="text/plain">Sensing period is valid. </message>
+                    <extraValues>
+                        <value name="SENSING_START">2019-01-03T10:47:08.198Z</value>
+                        <value name="SENSING_STOP">2019-01-03T10:49:36.117Z</value>
+                    </extraValues>
+                </check>
+                <check>
+                    <inspection creation="2019-01-03T12:45:31.873Z" duration="118" execution="2019-01-03T12:45:31.879Z" id="checkMetadata" item="S2A_OPER_MSI_L2A_DS_MPS__20190103T112454_S20190103T104708_N02.11" itemURL="/dpc/data/phoebus-share/PHOEBUS-3.4.1/wp_in_progress/l2a_20190103_1/app_data/steps_data/DS/S2A_OPER_MSI_L2A_DS_MPS__20190103T112454_S20190103T104708_N02.11/" name="Metadata file check. " priority="5" processingStatus="done" status="PASSED"/>
+                    <message contentType="text/plain">Metadata file is present.</message>
+                </check>
+            </checkList>
+        </report>
+    </Data_Block>
+</Earth_Explorer_File>
