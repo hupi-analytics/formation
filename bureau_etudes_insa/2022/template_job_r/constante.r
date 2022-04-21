@@ -1,0 +1,1 @@
+# Constantes du modèle
