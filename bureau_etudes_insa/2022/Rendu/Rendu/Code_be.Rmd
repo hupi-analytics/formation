@@ -1,0 +1,724 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+
+```{r}
+# Librairies pour la gestion des data frame 
+library(devtools)
+library(DBI)
+# library(mongolite)
+# library(RColorBrewer)
+# library(arules)
+library(dplyr)
+library(tidyr)
+library(lubridate)
+library(tidyverse)
+library(RSQLite)
+library(data.table)
+# Graphiques 
+library(ggplot2)
+# Libraririe nécessaire pour implémenter le modèle Isolation forest 
+library(isotree)
+library(caret)
+library(pROC)
+# Equilibre jeu de données 
+# /!\ runner une fois : remotes::install_github("cran/DMwR")
+library(DMwR)
+# Librairie pour le DBSCAN 
+library(dbscan)
+```
+
+# Importation des données
+
+```{r}
+filename1 <- "C:/Users/TES059/Documents/Documents/Cours/4GM/Bureau_etude/atelier_22-07.db"
+filename2 <- "C:/Users/TES059/Documents/Documents/Cours/4GM/Bureau_etude/atelier_12-07.db"
+sqlite.driver <- dbDriver("SQLite")
+
+
+db1 <- dbConnect(sqlite.driver, dbname = filename1)
+db2 <- dbConnect(sqlite.driver, dbname = filename2)
+
+df1 <- dbReadTable(db1,"all_data")
+df2 <- dbReadTable(db2,"all_data")
+```
+
+
+# Transformation des données 
+
+## Fonctions pour la création de variables de durée :
+
+```{r}
+## Objectif  : créer une colonne qui comptabilise les mêmes états et repart à 0 lorsqu'on change d'état (général)
+
+create_duree_etat = function(df){
+  
+  # On commence à la ligne 2 comme on compare au temps d'avant 
+  it = 2
+  k = 1
+  print(nrow(df))
+  while(it <= nrow(df)){
+    
+
+    # Signifie qu'on va regarder le technicien 2
+    if(is.na(df[it,"t1_casque"])){
+     
+      # Si des NA sont présentes en comparant les deux lignes, alors on a changé de technicien donc k=0
+      if(is.na(all(df[it,10:13] == df[it-1,10:13]))){
+        k=1
+        it = it+1
+        next
+      }
+      # Si les deux lignes sont égales sont affecte k et on l'incrémente
+      else if(all(df[it,10:13] == df[it-1,10:13])){
+        # Alors on incrémente
+        df[it,"duree_etat"] = k
+        k = k+1
+      }
+      # Sinon, on remet à 0 
+      else{k = 1}
+    }
+    # Si on considère le technicien 1
+    else{
+      
+      # Si des NA sont présentes en comparant les deux lignes, alors on a changé de technicien donc k=0
+      if(is.na(all(df[it,5:9] == df[it-1,5:9]))){
+        k=1
+        it = it+1
+        next
+      }
+      # Si les deux lignes sont égales sont affecte k et on l'incrémente
+      else if(all(df[it,5:9] == df[it-1,5:9])){
+        
+        df[it,"duree_etat"] = k
+        k = k+1
+      }
+      # Sinon, on remet à 1
+      else{k=1}
+    }
+    it = it+1
+  }
+  return(df)
+}
+
+```
+
+
+```{r}
+## Objectif : créer pour chaque équipement une colonne qui comptabilise le nombre de fois où l'équipement est porté, repart à 0 lors d'un changement d'état.
+
+var_enum = function(df,col1,col2,n){
+  # On récupère les noms de colonnes 
+  # col1 est la colonne de la variable (col, veste etc...)
+  ncol1 = which(colnames(df) == col1)
+  # col2 est la colonne d'énumération rajoutée
+  ncol2 = which(colnames(df) == col2)
+  it = 1
+  k = 1
+  # On parcourt le jeu de données
+  while(it <= n){
+    # Si la variable au temps t est égale a 0, elle reste a 0 
+    if(df[it,ncol1] == 0 | is.na(df[it,col1])){
+      k=1
+    }
+    # Sinon, on l'incrémente et on l'affecte à la colonne correspondante
+    else{
+      df[it,col2] = k
+      k = k+1
+    }
+    it = it+1
+  }
+  return(df)
+}
+
+```
+
+
+## Changement du type des données, gestion des dates et suppression des valeurs "2" et création d'une colonne danger 
+
+```{r}
+
+# On met en factor 
+df1 = df1 %>% mutate_if(is.numeric, as.factor)
+df2 = df2 %>% mutate_if(is.numeric, as.factor)
+
+# On traite les dates
+df1[,"Datetime"] = ymd_hms(df1[,"Datetime"])
+df2[,"Datetime"] = ymd_hms(df2[,"Datetime"])
+
+# Problème de dates lignes 1 à 51 : 6 juillet jusqu'à ligne 49 et lignes 50 et 51 = année 1969 ???
+df2 = df2[-c(1:51),]
+
+# Etude des données
+summary(df1)
+summary(df2)
+
+# On enlève les 2 
+df2 = df2 %>% filter(((t2_casque !=2) & (t2_veste !=2) & (t2_visiere !=2) & (t2_col !=2) & (t1_gant_gauche != 2)) %>% replace_na(TRUE))
+
+# Création de la colonne danger
+df2 = df2 %>% mutate(danger = 0)
+df1 = df1 %>% mutate(danger = 0)
+```
+
+
+
+# DF1 : 22/07/2021
+
+## Modification de la colonne danger en fonction des heures 
+
+
+```{r}
+# On enlève le scénario 3 car il y a des erreurs dedans : les gants ne sont pas détectés à des endroits ce qui vient fausser les résultats.
+
+df1  = df1 %>% filter(Scenario==c(1,2,5))
+
+
+# Scenario 1
+df1[ df1$Scenario == 1 & df1$Datetime >= as.POSIXct("2021-07-22 10:54:58",tz="UTC") & df1$Datetime < as.POSIXct("2021-07-22 10:57:39",tz="UTC"),"danger"] = 1
+
+
+# Scenario 2
+df1[ df1$Scenario == 2 & df1$Datetime >= as.POSIXct("2021-07-22 11:03:31",tz="UTC") & df1$Datetime < as.POSIXct("2021-07-22 11:04:49",tz="UTC"),"danger"] = 1
+
+# Scenario 5
+df1[ df1$Scenario == 5 & df1$Datetime >= as.POSIXct("2021-07-22 14:53:01",tz="UTC") & df1$Datetime < as.POSIXct("2021-07-22 14:54:00",tz="UTC"),"danger"] = 1
+
+
+
+df1 = df1 %>% mutate_if(is.numeric, as.factor)
+summary(df1)
+```
+
+## Création de la variable comparative entre deux états au temps t et t-1
+
+```{r}
+# On crée la colonne
+df1 = df1 %>% mutate(duree_etat = 0)
+df1 = create_duree_etat(df1)
+
+```
+
+
+## Création des variables comparatives itératives pour chaque équipement par rapport au temps 
+
+```{r}
+# Création des colonnes 
+df1 = df1 %>% mutate(t1_casque_enum = 0,t1_visiere_enum = 0, t1_col_enum = 0, t1_gant_gauche_enum = 0, t1_gant_droit_enum= 0, t2_casque_enum = 0,  t2_visiere_enum = 0, t2_veste_enum = 0, t2_col_enum = 0)
+
+colname_df = colnames(df1)[5:13]
+colenum_df = colnames(df1)[17:25]
+
+
+for (i in 1:length(colname_df)){
+    df1 = var_enum(df1,colname_df[i],colenum_df[i],nrow(df1))
+}
+
+
+```
+
+
+## DF2 : 12/07/2021
+
+## Création de la variable comparative entre deux états au temps t et t-1
+
+```{r}
+# On crée la colonne
+df2 = df2 %>% mutate(duree_etat = 0)
+df2 = create_duree_etat(df2)
+
+
+
+```
+
+
+## Création des variables comparatives itératives pour chaque équipement par rapport au temps 
+
+```{r}
+# On crée les colonnes 
+df2 = df2 %>% mutate(t1_casque_enum = 0,t1_visiere_enum = 0, t1_col_enum = 0, t1_gant_gauche_enum = 0, t1_gant_droit_enum= 0, t2_casque_enum = 0,  t2_visiere_enum = 0, t2_veste_enum = 0, t2_col_enum = 0)
+
+colname_df = colnames(df2)[5:13]
+colenum_df = colnames(df2)[16:24]
+
+
+
+for (i in 1:length(colname_df)){
+    df2 = var_enum(df2,colname_df[i],colenum_df[i],nrow(df2))
+}
+```
+
+
+
+```{r}
+
+# Scenario 1
+df2[ df2$Scenario == 1 & df2$Datetime >= as.POSIXct("2021-07-12 10:52:58",tz="UTC") & df2$Datetime < as.POSIXct("2021-07-12 10:59:04",tz="UTC"),"danger"] = 1
+df2[ df2$Scenario == 1 & df2$Datetime > as.POSIXct("2021-07-12 11:01:56",tz="UTC") & df2$Datetime < as.POSIXct("2021-07-12 11:03:00",tz="UTC"),"danger"] = 1
+
+
+# Scenario 2
+df2[ df2$Scenario == 2 & df2$Datetime >= as.POSIXct("2021-07-12 11:10:00",tz="UTC") & df2$Datetime < as.POSIXct("2021-07-12 11:13:52",tz="UTC"),"danger"] = 1
+df2[ df2$Scenario == 2 & df2$Datetime > as.POSIXct("2021-07-12 11:14:32",tz="UTC") & df2$Datetime < as.POSIXct("2021-07-12 11:15:33",tz="UTC"),"danger"] = 1
+
+# Scenario 3
+df2[ df2$Scenario == 3 & df2$Datetime >= as.POSIXct("2021-07-12 14:22:06",tz="UTC") & df2$Datetime < as.POSIXct("2021-07-12 14:25:01",tz="UTC"),"danger"] = 1
+
+# Scenario 4
+df2[ df2$Scenario == 4 & df2$Datetime >= as.POSIXct("2021-07-12 14:29:38",tz="UTC") & df2$Datetime < as.POSIXct("2021-07-12 14:30:16",tz="UTC"),"danger"] = 1
+
+# Scenario 5
+# PAS D'HEURES DANS LE EXCEL
+
+# Scenario 6
+# Problème scénario, on l'ignore
+
+```
+
+# Analyse de données 
+
+```{r}
+ggplot(df1) +
+  geom_boxplot(aes(x = Correct, y = duree_etat), fill = "cadetblue", color = "darkorchid4", varwidth = TRUE) +
+  ggtitle("Boxplot de la variable sur la durée des états", subtitle = "Suivant si le scénario est conforme (Correct = 1) ou non (Correct = 0)") +
+  theme(
+  plot.title = element_text(hjust = 0.5),
+  plot.subtitle = element_text(hjust = 0.5)
+  )
+```
+
+```{r}
+ggplot(df2) +
+  geom_boxplot(aes(x = Correct, y = duree_etat), fill = "cadetblue", color = "darkorchid4", varwidth = TRUE) +
+  ggtitle("Boxplot de la variable sur la durée des états", subtitle = "Suivant si le scénario est conforme (Correct = 1) ou non (Correct = 0)") +
+  theme(
+  plot.title = element_text(hjust = 0.5),
+  plot.subtitle = element_text(hjust = 0.5)
+  )
+```
+
+
+
+# Premier test Isolation Forest
+
+## Séparation du jeu de données 
+Association des deux ateliers 
+```{r}
+# On associe les deux ateliers pour faire des prédictions avec un plus grand jeu de données 
+# On change les numéros de scénarios pour le data frame 2 car sinon le scénario n'est plus une clé unique 
+df2_mod = df2
+df2_mod$Scenario = as.factor(as.numeric(df2_mod$Scenario) + 10)
+df_tot = rbind(df1[,-which(colnames(df1)=='categorie_travail')], df2_mod)
+
+# Nombre de scénarios disponibles : 
+length(unique(df_tot$Scenario))
+```
+```{r}
+# On garde 2 scénarios pour tester avec 2 'correct' et 2 non 'correct'
+scen = unique(df_tot$Scenario)
+# Les scénarios 5 et 6 du de df2 ne sont pas exploitables 
+scen = scen[scen!=16]
+scen = scen[scen!=15]
+
+# Apprentissage : 
+set.seed(314)
+app_tot = sample(scen,5)
+#app_tot = append(app_tot,16)
+#app_tot = append(app_tot,15)
+train_df = df_tot[df_tot$Scenario %in% app_tot, ]
+train_df_keep = train_df
+
+# Test : 
+test_df = df_tot[!(df_tot$Scenario %in% app_tot) & !(df_tot$Scenario %in% c(15,16)), ]
+
+```
+
+
+
+
+## Isolation forest
+Modèle avec les deux ateliers réunis : 
+
+```{r}
+train_df = train_df %>% select(-Scenario,-Timestamp,-Datetime,-danger,-Correct)
+test_df_fin = test_df
+test_df = test_df %>% select(-Scenario,-Timestamp,-Datetime,-Correct)
+test_df
+# Model fitting
+model_tot = isolation.forest(train_df)
+
+# Prediction
+pred_tot = predict(model_tot,test_df %>% select(-danger))
+pred_sort_tot = sort(pred_tot,decreasing=TRUE)
+head(pred_sort_tot)
+```
+
+
+
+## Analyse des résultats : ROC et matrice de confusion
+
+```{r}
+## On a bien les prédictions dans le top des probas, mais les toutes premières ne sont pas dangers : peut etre un risque de manipulation très précise avec des équipements spécifiques qui ne sont pas souvent mis ensemble ?
+
+
+plot.roc(test_df$danger, pred_tot, legacy.axes=TRUE, print.thres=c(.40), col="blue", auc.polygon=TRUE,print.auc=TRUE)
+plot.roc(test_df$danger,pred_tot, legacy.axes=TRUE, print.thres="best", col="blue", auc.polygon=TRUE,print.auc=TRUE)
+```
+
+```{r}
+pred_test_df = if_else(pred_tot > 0.455,1,0)
+sum(pred_test_df==1)
+
+confusion_mat = confusionMatrix(as.factor(pred_test_df),as.factor(test_df$danger))
+print(confusion_mat)
+```
+
+
+## Analyse 
+## Sensibilité et spécificité
+```{r}
+# On récupère les probas >0.455
+pred_test_prob_tot = pred_sort_tot[pred_sort_tot>0.455]
+names_pred_tot = names(pred_test_prob_tot)
+
+# Rappel : 0 : scénario incorrect, 1 scénario correct 
+correct_danger_tot = df_tot[names_pred_tot,c("Correct","danger")]
+correct_danger_tot
+table(correct_danger_tot)
+
+# Rappel : ici on considère les prédictions de danger = 1, donc dans la table les danger = 0 correspondent aux vrais valeurs de la réponse, non celle prédite 
+# Ce qu'on peut dire de ce taleau : AUCUN SCENARIO considéré comme correct n'est prédit en danger = 1 (i.e. tous les scénarios incorrects ont des prédictions danger =1)
+
+# Par contre : déjà observé dans la matrice de confusion, bcp de prédictions danger = 0
+
+
+# Par scénario ? 
+
+scenario_danger_tot = df_tot[names_pred_tot,c("Scenario","danger")]
+table(scenario_danger_tot)
+```
+
+## On regarde plus en détail les prédictions comparées aux scénario, à la variable correct et à la variable danger 
+```{r}
+test_perf = cbind(test_df_fin[,c("Datetime","Scenario","Correct","danger")], pred_tot)
+test_perf$prediction = ifelse(pred_tot > 0.455,1,0)
+test_perf
+```
+```{r}
+print("Bonnes prédictions :")
+nrow(test_perf[test_perf$danger==test_perf$prediction,])
+test_perf[test_perf$danger==test_perf$prediction,]
+
+print("Mauvaises prédictions :")
+nrow(test_perf[test_perf$danger!=test_perf$prediction,])
+test_perf[test_perf$danger!=test_perf$prediction,]
+```
+```{r}
+# Matrice de confusion : 
+res_confusion = confusionMatrix(as.factor(test_perf$prediction),as.factor(test_perf$danger))
+print(res_confusion)
+```
+
+
+
+On plot les prédictions en fonctions du scénario et de la variable correcte 
+```{r}
+plot_1 <- ggplot(test_perf[test_perf$Scenario ==1 & test_perf$Correct==0,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_1
+
+plot_2 <- ggplot(test_perf[test_perf$Scenario ==1 & test_perf$Correct==1,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_2
+```
+
+
+```{r}
+plot_3 <- ggplot(test_perf[test_perf$Scenario ==2 & test_perf$Correct==0,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_3
+
+plot_4 <- ggplot(test_perf[test_perf$Scenario ==2 & test_perf$Correct==1,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_4
+```
+
+
+
+# Rééquilibration du jeu de données 
+Dans le jeu de données d'apprentissage, on a 817 état où danger = 1 et 185 états où danger = 0
+```{r}
+train_df_keep = train_df_keep[ ,-c(1,2,3,4)]
+set.seed(314)
+new_df = SMOTE(danger ~ ., train_df_keep,perc.over = 100, perc.under = 300)
+#train_df_keep$danger = as.factor(train_df_keep$danger)
+#train_df_keep2 = train_df_keep[,c(10:20)]
+
+#new_df = AdasynClassif(danger~duree_etat+t1_casque_enum+t1_visiere_enum+t1_col_enum+t1_gant_gauche_enum+t1_gfant_droit_enum+t2_casque_enum+t2_visiere_enum+t2_veste_enum,dat=train_df_keep2 , beta = 0.5,dist = "HEOM")
+
+#new_df = TomekClassif(danger ~ ., train_df_keep2)
+```
+
+
+```{r}
+# On enlève la variable danger pour fitter le modèle 
+new_df = new_df[,-10]
+
+# Model fitting
+model_tot2 = isolation.forest(new_df)
+
+# Prediction
+pred_tot2 = predict(model_tot2,test_df)
+pred_sort_tot2 = sort(pred_tot2,decreasing=TRUE)
+head(pred_sort_tot2)
+```
+
+```{r}
+plot.roc(test_df$danger, pred_tot2, legacy.axes=TRUE, print.thres=c(.40), col="blue", auc.polygon=TRUE,print.auc=TRUE)
+plot.roc(test_df$danger,pred_tot2, legacy.axes=TRUE, print.thres="best", col="blue", auc.polygon=TRUE,print.auc=TRUE)
+```
+
+```{r}
+test_perf2 = cbind(test_df_fin[,c("Datetime","Scenario","Correct","danger")], pred_tot2)
+test_perf2$prediction = ifelse(pred_tot2 > 0.431,1,0)
+test_perf2
+```
+```{r}
+print("Bonnes prédictions :")
+nrow(test_perf2[test_perf2$danger==test_perf2$prediction,])
+test_perf2[test_perf2$danger==test_perf2$prediction,]
+
+print("Mauvaises prédictions :")
+nrow(test_perf2[test_perf2$danger!=test_perf2$prediction,])
+test_perf2[test_perf2$danger!=test_perf2$prediction,]
+```
+
+```{r}
+# Matrice de confusion : 
+res_confusion2 = confusionMatrix(as.factor(test_perf2$prediction),as.factor(test_perf2$danger))
+print(res_confusion2)
+```
+
+
+
+```{r}
+plot_1 <- ggplot(test_perf2[test_perf2$Scenario ==1 & test_perf2$Correct==0,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_1
+
+plot_2 <- ggplot(test_perf2[test_perf2$Scenario ==1 & test_perf2$Correct==1,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_2
+
+```
+
+```{r}
+plot_3 <- ggplot(test_perf2[test_perf2$Scenario ==2 & test_perf2$Correct==0,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_3
+
+plot_4 <- ggplot(test_perf2[test_perf2$Scenario ==2 & test_perf2$Correct==1,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = prediction, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_4
+```
+
+
+
+
+## Analyse des résultats
+
+
+# DBSCAN
+
+
+```{r}
+# On combine les deux ateliers (en supprimant la colonne catégorie de travail présente uniquement dans df1)
+data = rbind(df1[,-14], df2_mod)
+
+set.seed(300)
+# Séparation des deux tecniciens : 
+tec_1 = data %>% filter(is.na(t2_casque))
+tec_1 =  tec_1[,-c(10:13,21:24)]
+tec_2 = data %>% filter(is.na(t1_casque))
+tec_2 =  tec_2[,-c(5:9,16:20)]
+
+# Pour chaque technicien, on garde un scénario pour tester et on supprime les scénarios 5 et 6 de df2 (donc correspondant à 15 et 16 dans data)
+scen_1 = unique(tec_1$Scenario)
+scen_1 = scen_1[!(scen_1==15 | scen_1 ==16)]
+scen_2 = unique(tec_2$Scenario)
+scen_2 = scen_2[!(scen_2==15 | scen_2 ==16)]
+
+
+# Séparation en échantillons test et d'apprentissage 
+test_1 = sample(scen_1,1)
+test_2 = sample(scen_2,1)
+train_data_T1 = tec_1[!(tec_1$Scenario==test_1),]
+test_data_T1 = tec_1[tec_1$Scenario==test_1,]
+train_data_T2 = tec_2[!(tec_2$Scenario==test_2),]
+test_data_T2 = tec_2[tec_2$Scenario==test_2,]
+
+# On enlève les colonnes hors variables 
+train_data_tech1 = train_data_T1 %>% select(-Scenario,-Timestamp,-Datetime,-danger,-Correct)
+test_data_tech1 = test_data_T1 %>% select(-Scenario,-Timestamp,-Datetime,-danger,-Correct)
+train_data_tech2 = train_data_T2 %>% select(-Scenario,-Timestamp,-Datetime,-danger,-Correct)
+test_data_tech2 = test_data_T2 %>% select(-Scenario,-Timestamp,-Datetime,-danger,-Correct)
+
+# Changement du type de données : 
+train_data_tech1 = train_data_tech1 %>% mutate_if(is.factor, function(x) {as.numeric(levels(x))[x]})
+test_data_tech1 = test_data_tech1 %>% mutate_if(is.factor, function(x) {as.numeric(levels(x))[x]})
+train_data_tech2 = train_data_tech2 %>% mutate_if(is.factor, function(x) {as.numeric(levels(x))[x]})
+test_data_tech2 = test_data_tech2 %>% mutate_if(is.factor, function(x) {as.numeric(levels(x))[x]})
+```
+
+
+
+
+Technicien 1 
+```{r}
+# Pour estimer les paramètres du DBSCAN on choisit k = 2*dim avec dim le nombre de variables, et pour epsilon on utilise la fonction knndistplot
+# On a 10 variables donc k = 2*10 = 20 
+# Distplot
+
+kNNdistplot(train_data_tech1, k = 20)
+
+# Technicien 1 
+# On peut estimer avec epsilon = 9 (niveau du "coude")
+res_tech1 = dbscan(train_data_tech1,eps = 9, minPts = 20)
+pred_dbscan_T1 = predict(res_tech1,test_data_tech1, data=train_data_tech1)
+test_perf_tech1 = cbind(test_data_T1,pred_dbscan_T1)
+
+# Matrice de confusion : 
+res_confusion_tech1 = confusionMatrix(as.factor(test_perf_tech1$pred_dbscan_T1),as.factor(test_perf_tech1$danger))
+print(res_confusion_tech1)
+# La classe 1 de DBSCAN correspond elle à danger = 0 ? 
+res_confusion_tech12 = confusionMatrix(as.factor(abs(test_perf_tech1$pred_dbscan_T1-1)),as.factor(test_perf_tech1$danger))
+print(res_confusion_tech12)
+
+nrow(test_perf_tech1[test_perf_tech1$Correct==1 & test_perf_tech1$pred_dbscan_T1==1,])
+```
+
+
+```{r}
+plot_1 <- ggplot(test_perf_tech1[test_perf_tech1$Correct==0,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = pred_dbscan_T1, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_1
+
+plot_2 <- ggplot(test_perf_tech1[test_perf_tech1$Correct==1,]) +
+      ylim(0, 1)+  xlab("Heure") + ylab("Variables danger et prédictions")+
+      geom_line(aes(x = Datetime, y = as.numeric(danger)-1, colour = "Danger"), size=1) +
+      geom_line(aes(x = Datetime, y = pred_dbscan_T1, colour = "Prédictions")) +
+      ggtitle("Comparaison des prédictions et des valeurs réelles de danger", subtitle = "Suivant si le scénario est correct") +
+      scale_color_manual(name = "Variables", values = c("Danger" = "cadetblue", "Prédictions" = "darkorange"))+
+      theme(
+        plot.title = element_text(hjust = 0.5),
+        plot.subtitle = element_text(hjust = 0.5)
+      )
+
+plot_2
+```
+
+
+
+Technicien 1 
+```{r}
+# Pour estimer les paramètres du DBSCAN on choisit k = 2*dim avec dim le nombre de variables, et pour epsilon on utilise la fonction knndistplot
+# On a 9 variables donc k = 2*9 = 18 
+# Distplot
+
+kNNdistplot(train_data_tech2, k = 18)
+
+# Technicien 1 
+# On peut estimer avec epsilon = 9 (niveau du "coude")
+res_tech2 = dbscan(train_data_tech2,eps = 21, minPts = 20)
+pred_dbscan_T2 = predict(res_tech2,test_data_tech2, data=train_data_tech2)
+test_perf_tech2 = cbind(test_data_T2,pred_dbscan_T2)
+
+# Le dbscan identifie 3 groupes : l'algorithme ne marche donc pas ici 
+```
+
+
+
+
